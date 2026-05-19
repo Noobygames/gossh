@@ -46,7 +46,7 @@ func main() {
 
 func commonFlags(fs *flag.FlagSet) (server, remoteDir, identity *string) {
 	server = fs.String("server", "", "SSH target (user@host[:port])")
-	remoteDir = fs.String("remote-dir", "~/kubernetes", "Remote destination directory")
+	remoteDir = fs.String("remote-dir", "", "Remote destination directory (overrides config; default: ~/kubernetes)")
 	identity = fs.String("identity", "", "SSH private key (default: ~/.ssh/id_ed25519, ~/.ssh/id_rsa, ~/.ssh/id_ecdsa)")
 	return
 }
@@ -56,8 +56,13 @@ func cmdPush(args []string) error {
 	server, remoteDir, identity := commonFlags(fs)
 	dryRun := fs.Bool("dry-run", false, "List files without transferring")
 	var extra stringSlice
-	fs.Var(&extra, "exclude", "Additional exclude name (repeatable)")
+	fs.Var(&extra, "exclude", "Additional exclude pattern (repeatable, gitignore-style)")
 	fs.Parse(args) //nolint:errcheck // ExitOnError
+
+	fileCfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
 
 	sourceDir := "."
 	if fs.NArg() > 0 {
@@ -65,11 +70,11 @@ func cmdPush(args []string) error {
 	}
 	return run(SyncConfig{
 		SourceDir: sourceDir,
-		Server:    *server,
-		RemoteDir: *remoteDir,
+		Server:    firstNonEmpty(*server, fileCfg.Server),
+		RemoteDir: firstNonEmpty(*remoteDir, fileCfg.RemoteDir, "~/kubernetes"),
 		DryRun:    *dryRun,
-		Identity:  *identity,
-		Excludes:  slices.Concat(defaultExcludes, []string(extra)),
+		Identity:  firstNonEmpty(*identity),
+		Excludes:  slices.Concat(defaultExcludes, fileCfg.Excludes, []string(extra)),
 		Out:       os.Stdout,
 	})
 }
@@ -79,15 +84,20 @@ func cmdPull(args []string) error {
 	server, remoteDir, identity := commonFlags(fs)
 	fs.Parse(args) //nolint:errcheck // ExitOnError
 
+	fileCfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+
 	localDir := "."
 	if fs.NArg() > 0 {
 		localDir = fs.Arg(0)
 	}
 	return pullFiles(SyncConfig{
 		SourceDir: localDir,
-		Server:    *server,
-		RemoteDir: *remoteDir,
-		Identity:  *identity,
+		Server:    firstNonEmpty(*server, fileCfg.Server),
+		RemoteDir: firstNonEmpty(*remoteDir, fileCfg.RemoteDir, "~/kubernetes"),
+		Identity:  firstNonEmpty(*identity),
 		Out:       os.Stdout,
 	}, terminalConflictPrompt)
 }

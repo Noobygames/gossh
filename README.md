@@ -36,10 +36,10 @@ gomvtossh push [flags] [source-dir]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-server` | *(required)* | SSH target: `user@host` or `user@host:port` |
-| `-remote-dir` | `~/kubernetes` | Destination directory on the remote host |
+| `-server` | config / *(required)* | SSH target: `user@host` or `user@host:port` |
+| `-remote-dir` | config / `~/kubernetes` | Destination directory on the remote host |
 | `-identity` | auto | SSH private key path |
-| `-exclude` | | Extra name to exclude (repeatable) |
+| `-exclude` | | Additional exclude pattern, gitignore-style (repeatable) |
 | `-dry-run` | `false` | List files that would be transferred, without transferring |
 
 ```sh
@@ -70,8 +70,8 @@ gomvtossh pull [flags] [local-dir]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-server` | *(required)* | SSH target: `user@host` or `user@host:port` |
-| `-remote-dir` | `~/kubernetes` | Source directory on the remote host |
+| `-server` | config / *(required)* | SSH target: `user@host` or `user@host:port` |
+| `-remote-dir` | config / `~/kubernetes` | Source directory on the remote host |
 | `-identity` | auto | SSH private key path |
 
 ```sh
@@ -82,16 +82,40 @@ gomvtossh pull -server deploy@myserver.example.com
 gomvtossh pull -server deploy@myserver.example.com ./my-configs
 ```
 
-## Default push excludes
+## Configuration
 
-These names are always excluded during push, regardless of depth in the tree:
+Create `.gomvtossh.yml` in the project directory (or `~/.gomvtossh.yml` as a user default). Flags always override config values.
+
+```yaml
+server: deploy@myserver.example.com
+remote-dir: ~/kubernetes
+
+excludes:
+  - "*.bak"
+  - "*.tmp"
+  - "dist/"
+  - "node_modules/"
+  - "**/vendor/"
+```
+
+The `excludes` list uses [gitignore](https://git-scm.com/docs/gitignore) syntax:
+
+| Pattern | Matches |
+|---------|---------|
+| `*.log` | any file named `*.log` at any depth |
+| `dist/` | any entry named `dist` at any depth |
+| `/vendor` | `vendor` only at the root |
+| `src/**/*.go` | `.go` files at any depth under `src/` |
+| `!important.log` | negate a previous match (last rule wins) |
+| `# comment` | ignored |
+
+### Default excludes (always active during push)
 
 - `.git`
-- `secret.yml`
 - `sealed-secrets-master-key-backup.yaml`
 - `gomvtossh` (the binary itself)
 
-Additional names can be excluded with `-exclude`.
+Config `excludes` and `-exclude` flags are added on top of these.
 
 ## Authentication
 

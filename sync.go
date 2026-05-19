@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 )
 
@@ -125,12 +124,23 @@ func listFiles(out io.Writer, sourceDir string, excludes []string) error {
 	})
 }
 
+// isExcluded evaluates excludes as gitignore-style patterns against relPath.
+// Lines starting with "#" or empty lines are ignored.
+// A leading "!" negates the pattern; last match wins.
 func isExcluded(relPath string, excludes []string) bool {
-	components := strings.Split(relPath, "/")
-	for _, excl := range excludes {
-		if slices.Contains(components, excl) {
-			return true
+	excluded := false
+	for _, p := range excludes {
+		p = strings.TrimSpace(p)
+		if p == "" || strings.HasPrefix(p, "#") {
+			continue
+		}
+		negated := strings.HasPrefix(p, "!")
+		if negated {
+			p = p[1:]
+		}
+		if matchPattern(relPath, p) {
+			excluded = !negated
 		}
 	}
-	return false
+	return excluded
 }
