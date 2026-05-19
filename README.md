@@ -1,8 +1,8 @@
 # gomvtossh
 
-Syncs a local directory to/from a remote server over SSH using tar+gzip streams — no temporary files on either side.
+Syncs files and directories to/from a remote server over SSH — no temporary files on either side.
 
-Designed for deploying Kubernetes manifests and similar config directories where only the files themselves (not symlinks or special permissions) need to be transferred.
+Designed for deploying Kubernetes manifests and similar config directories.
 
 ## Installation
 
@@ -18,46 +18,52 @@ cd gomvtossh
 go build -o gomvtossh .
 ```
 
-## Usage
+## Commands
 
 ```
-gomvtossh <push|pull> [flags] [dir]
+gomvtossh <command> [flags] [args]
 ```
 
-`dir` defaults to `.` (the current directory).
+Run `gomvtossh help` for an overview, or `gomvtossh help <command>` for detailed flags.
+
+---
 
 ### push
 
-Transfers a local directory to the remote host.
+Uploads a local directory or single file to the remote host.
 
 ```
-gomvtossh push [flags] [source-dir]
+gomvtossh push [flags] [source] [remote-path]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-server` | config / *(required)* | SSH target: `user@host` or `user@host:port` |
-| `-remote-dir` | config / `~/kubernetes` | Destination directory on the remote host |
+| `-remote-dir` | config / `~/kubernetes` | Remote destination directory |
 | `-identity` | auto | SSH private key path |
 | `-exclude` | | Additional exclude pattern, gitignore-style (repeatable) |
-| `-dry-run` | `false` | List files that would be transferred, without transferring |
+| `-dry-run` | `false` | List files without transferring |
 
 ```sh
 # Push current directory to ~/kubernetes
-gomvtossh push -server deploy@myserver.example.com
+gomvtossh push -server deploy@host.example.com
 
-# Push a specific directory, skip extra patterns
-gomvtossh push -server deploy@myserver.example.com \
-  -exclude dist -exclude node_modules \
-  ./my-configs
+# Push a specific directory with extra excludes
+gomvtossh push -server deploy@host.example.com -exclude dist ./my-configs
+
+# Push a single file to an exact remote path
+gomvtossh push -server deploy@host.example.com ./deploy.yaml ~/kubernetes/deploy.yaml
 
 # Preview what would be pushed
-gomvtossh push -server deploy@myserver.example.com -dry-run
+gomvtossh push -server deploy@host.example.com -dry-run
 ```
+
+---
 
 ### pull
 
-Downloads files from the remote directory to a local directory. When a file already exists locally, you are prompted to choose:
+Downloads a remote directory or single file to the local machine. When a file already
+exists locally, you are prompted:
 
 ```
   conflict  subdir/file.yaml
@@ -65,29 +71,63 @@ Downloads files from the remote directory to a local directory. When a file alre
 ```
 
 ```
-gomvtossh pull [flags] [local-dir]
+gomvtossh pull [flags] [remote-path local-path | local-dir]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-server` | config / *(required)* | SSH target: `user@host` or `user@host:port` |
-| `-remote-dir` | config / `~/kubernetes` | Source directory on the remote host |
+| `-remote-dir` | config / `~/kubernetes` | Remote source directory |
 | `-identity` | auto | SSH private key path |
 
 ```sh
-# Pull ~/kubernetes from remote into the current directory
-gomvtossh pull -server deploy@myserver.example.com
+# Pull ~/kubernetes into the current directory
+gomvtossh pull -server deploy@host.example.com
 
 # Pull into a specific local directory
-gomvtossh pull -server deploy@myserver.example.com ./my-configs
+gomvtossh pull -server deploy@host.example.com ./my-configs
+
+# Pull a single remote file to a local path
+gomvtossh pull -server deploy@host.example.com ~/kubernetes/deploy.yaml ./deploy.yaml
 ```
+
+---
+
+### ls
+
+Lists files on the remote host.
+
+```
+gomvtossh ls [flags] [remote-path]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-server` | config / *(required)* | SSH target: `user@host` or `user@host:port` |
+| `-remote-dir` | config / `~/kubernetes` | Default path to list |
+| `-identity` | auto | SSH private key path |
+| `-l` | `false` | Long listing format |
+| `-a` | `false` | Include hidden entries |
+| `-h` | `false` | Human-readable sizes (with `-l`) |
+| `-R` | `false` | Recursive |
+
+```sh
+# List ~/kubernetes
+gomvtossh ls -server deploy@host.example.com
+
+# Long listing of a specific path
+gomvtossh ls -server deploy@host.example.com -l ~/kubernetes/manifests
+```
+
+---
 
 ## Configuration
 
-Create `.gomvtossh.yml` in the project directory (or `~/.gomvtossh.yml` as a user default). Flags always override config values.
+Create `.gomvtossh.yml` in the project directory (or `~/.gomvtossh.yml` as a user default).
+Flags always override config values.
 
 ```yaml
-server: deploy@myserver.example.com
+server: deploy@host.example.com
 remote-dir: ~/kubernetes
 
 excludes:
@@ -115,7 +155,7 @@ The `excludes` list uses [gitignore](https://git-scm.com/docs/gitignore) syntax:
 - `sealed-secrets-master-key-backup.yaml`
 - `gomvtossh` (the binary itself)
 
-Config `excludes` and `-exclude` flags are added on top of these.
+Config `excludes` and `-exclude` flags are appended on top of these.
 
 ## Authentication
 

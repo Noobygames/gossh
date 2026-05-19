@@ -169,3 +169,54 @@ func writeExtractedFile(absPath, relPath string, r io.Reader, out io.Writer) err
 	fmt.Fprintf(out, "  pull  %s\n", relPath)
 	return nil
 }
+
+// pullSingleFile downloads one specific remote file to localPath.
+func pullSingleFile(cfg SyncConfig, remotePath, localPath string, prompt conflictPromptFn) error {
+	if _, err := os.Lstat(localPath); err == nil {
+		choice, err := prompt(localPath)
+		if err != nil {
+			return err
+		}
+		switch choice {
+		case choiceSkip, choiceSkipAll:
+			fmt.Fprintf(cfg.Out, "  skip  %s\n", localPath)
+			return nil
+		case choiceAbort:
+			return fmt.Errorf("aborted by user")
+		}
+	}
+
+	fmt.Fprintf(cfg.Out, "Connecting to %s...\n", cfg.Server)
+	client, err := connect(cfg, terminalPrompt)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	sess, err := client.NewSession()
+	if err != nil {
+		return fmt.Errorf("session: %w", err)
+	}
+	defer sess.Close()
+	sess.Stderr = os.Stderr
+
+	r, err := sess.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("stdout pipe: %w", err)
+	}
+
+	if err := sess.Start(fmt.Sprintf("cat %s", remotePath)); err != nil {
+		return fmt.Errorf("remote start: %w", err)
+	}
+
+	fmt.Fprintf(cfg.Out, "Pulling %s:%s → %s\n", cfg.Server, remotePath, localPath)
+	if err := writeExtractedFile(localPath, localPath, r, cfg.Out); err != nil {
+		return err
+	}
+
+	if err := sess.Wait(); err != nil {
+		return fmt.Errorf("remote: %w", err)
+	}
+	fmt.Fprintln(cfg.Out, "Done.")
+	return nil
+}
