@@ -11,7 +11,6 @@ import (
 
 var defaultExcludes = []string{
 	".git",
-	"secret.yml",
 	"sealed-secrets-master-key-backup.yaml",
 	"gomvtossh",
 }
