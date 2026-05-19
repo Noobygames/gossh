@@ -1,10 +1,19 @@
-package main
+package config_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/noobygames/gossh/pkg/config"
 )
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestMatchPattern(t *testing.T) {
 	tests := []struct {
@@ -12,7 +21,6 @@ func TestMatchPattern(t *testing.T) {
 		path    string
 		want    bool
 	}{
-		// Unanchored: matches any component
 		{"*.log", "debug.log", true},
 		{"*.log", "src/debug.log", true},
 		{"*.log", "src/sub/debug.log", true},
@@ -20,24 +28,13 @@ func TestMatchPattern(t *testing.T) {
 		{"node_modules", "node_modules/pkg", true},
 		{"node_modules", "a/node_modules/pkg", true},
 		{"node_modules", "a/not_node_modules/pkg", false},
-
-		// Trailing slash: same as without (directory-only marker, type not enforced)
 		{"dist/", "dist/main.js", true},
 		{"dist/", "a/dist/main.js", true},
-
-		// Anchored: leading slash matches from root.
-		// Pattern "/vendor" matches the "vendor" directory entry itself;
-		// subdirectory contents are excluded via SkipDir in the walk,
-		// not by the pattern matching them directly.
 		{"/vendor", "vendor", true},
 		{"/vendor", "a/vendor", false},
-
-		// Anchored: slash in middle implies root-relative
 		{"src/*.go", "src/main.go", true},
 		{"src/*.go", "other/src/main.go", false},
 		{"src/*.go", "src/sub/main.go", false},
-
-		// ** anywhere
 		{"**/node_modules", "node_modules", true},
 		{"**/node_modules", "a/node_modules", true},
 		{"**/node_modules", "a/b/node_modules", true},
@@ -50,61 +47,46 @@ func TestMatchPattern(t *testing.T) {
 		{"src/**", "src", true},
 	}
 	for _, tt := range tests {
-		got := matchPattern(tt.path, tt.pattern)
+		got := config.MatchPattern(tt.path, tt.pattern)
 		if got != tt.want {
-			t.Errorf("matchPattern(%q, %q) = %v, want %v", tt.path, tt.pattern, got, tt.want)
+			t.Errorf("MatchPattern(%q, %q) = %v, want %v", tt.path, tt.pattern, got, tt.want)
 		}
 	}
 }
 
 func TestIsExcludedGitignoreStyle(t *testing.T) {
-	tests := []struct {
+	type tc struct {
 		desc     string
 		path     string
 		excludes []string
 		want     bool
-	}{
-		{
-			desc:     "simple name match",
-			path:     ".git/config",
-			excludes: []string{".git"},
-			want:     true,
-		},
-		{
-			desc:     "glob match",
-			path:     "logs/app.log",
-			excludes: []string{"*.log"},
-			want:     true,
-		},
-		{
-			desc:     "negation overrides earlier match",
-			path:     "important.log",
-			excludes: []string{"*.log", "!important.log"},
-			want:     false,
-		},
-		{
-			desc:     "comment lines ignored",
-			path:     "file.txt",
-			excludes: []string{"# this is a comment", "*.txt"},
-			want:     true,
-		},
-		{
-			desc:     "empty lines ignored",
-			path:     "file.txt",
-			excludes: []string{"", "*.txt"},
-			want:     true,
-		},
-		{
-			desc:     "last match wins with multiple patterns",
-			path:     "src/debug.log",
-			excludes: []string{"*.log", "!src/*.log", "*.log"},
-			want:     true,
-		},
+	}
+	tests := []tc{
+		{"simple name match", ".git/config", []string{".git"}, true},
+		{"glob match", "logs/app.log", []string{"*.log"}, true},
+		{"negation overrides earlier match", "important.log", []string{"*.log", "!important.log"}, false},
+		{"comment lines ignored", "file.txt", []string{"# comment", "*.txt"}, true},
+		{"empty lines ignored", "file.txt", []string{"", "*.txt"}, true},
+		{"last match wins", "src/debug.log", []string{"*.log", "!src/*.log", "*.log"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			if got := isExcluded(tt.path, tt.excludes); got != tt.want {
-				t.Errorf("isExcluded(%q) = %v, want %v", tt.path, got, tt.want)
+			excluded := false
+			for _, p := range tt.excludes {
+				if p == "" || p[0] == '#' {
+					continue
+				}
+				neg := p[0] == '!'
+				pat := p
+				if neg {
+					pat = p[1:]
+				}
+				if config.MatchPattern(tt.path, pat) {
+					excluded = !neg
+				}
+			}
+			if excluded != tt.want {
+				t.Errorf("path %q excludes %v: got %v, want %v", tt.path, tt.excludes, excluded, tt.want)
 			}
 		})
 	}
@@ -126,7 +108,7 @@ excludes:
 	must(t, os.Chdir(dir))
 	defer os.Chdir(orig) //nolint:errcheck
 
-	cfg, err := loadConfig()
+	cfg, err := config.Load()
 	must(t, err)
 
 	if cfg.Server != "user@host.example.com" {
@@ -147,11 +129,10 @@ func TestLoadConfigMissing(t *testing.T) {
 	must(t, os.Chdir(dir))
 	defer os.Chdir(orig) //nolint:errcheck
 
-	// Redirect HOME so the fallback ~/.gossh.yml is not found either.
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
 
-	cfg, err := loadConfig()
+	cfg, err := config.Load()
 	must(t, err)
 
 	if cfg.Server != "" || cfg.RemoteDir != "" || len(cfg.Excludes) != 0 {

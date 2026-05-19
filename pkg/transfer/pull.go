@@ -1,4 +1,4 @@
-package main
+package transfer
 
 import (
 	"archive/tar"
@@ -9,21 +9,26 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/noobygames/gossh/pkg/sshconn"
 )
 
-type conflictChoice int
+// ConflictChoice represents the user's resolution for a file conflict during pull.
+type ConflictChoice int
 
 const (
-	choiceSkip conflictChoice = iota
-	choiceSkipAll
-	choiceOverwrite
-	choiceOverwriteAll
-	choiceAbort
+	ChoiceSkip ConflictChoice = iota
+	ChoiceSkipAll
+	ChoiceOverwrite
+	ChoiceOverwriteAll
+	ChoiceAbort
 )
 
-type conflictPromptFn func(relPath string) (conflictChoice, error)
+// ConflictPromptFn is called when a pulled file would overwrite an existing local file.
+type ConflictPromptFn func(relPath string) (ConflictChoice, error)
 
-func terminalConflictPrompt(relPath string) (conflictChoice, error) {
+// TerminalConflictPrompt reads a conflict resolution choice from the terminal.
+func TerminalConflictPrompt(relPath string) (ConflictChoice, error) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Fprintf(os.Stderr, "  conflict  %s\n    [s]kip  [S]kip all  [o]verwrite  [O]verwrite all  [a]bort: ", relPath)
@@ -33,22 +38,23 @@ func terminalConflictPrompt(relPath string) (conflictChoice, error) {
 		}
 		switch strings.TrimSpace(line) {
 		case "s":
-			return choiceSkip, nil
+			return ChoiceSkip, nil
 		case "S":
-			return choiceSkipAll, nil
+			return ChoiceSkipAll, nil
 		case "o":
-			return choiceOverwrite, nil
+			return ChoiceOverwrite, nil
 		case "O":
-			return choiceOverwriteAll, nil
+			return ChoiceOverwriteAll, nil
 		case "a":
-			return choiceAbort, nil
+			return ChoiceAbort, nil
 		}
 	}
 }
 
-func pullFiles(cfg SyncConfig, prompt conflictPromptFn) error {
-	fmt.Fprintf(cfg.Out, "Connecting to %s...\n", cfg.Server)
-	client, err := connect(cfg, terminalPrompt)
+// Pull downloads opts.RemoteDir to opts.SourceDir, prompting on conflicts.
+func Pull(opts Options, prompt ConflictPromptFn) error {
+	fmt.Fprintf(opts.Out, "Connecting to %s...\n", opts.Server)
+	client, err := sshconn.Connect(opts.Server, opts.Identity, sshconn.TerminalPrompt)
 	if err != nil {
 		return err
 	}
@@ -66,25 +72,22 @@ func pullFiles(cfg SyncConfig, prompt conflictPromptFn) error {
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
 
-	if err := sess.Start(fmt.Sprintf("tar -czf - -C %s .", cfg.RemoteDir)); err != nil {
+	if err := sess.Start(fmt.Sprintf("tar -czf - -C %s .", opts.RemoteDir)); err != nil {
 		return fmt.Errorf("remote start: %w", err)
 	}
 
-	fmt.Fprintf(cfg.Out, "Pulling %s:%s → %s\n", cfg.Server, cfg.RemoteDir, cfg.SourceDir)
-
-	if err := extractWithConflicts(r, cfg, prompt); err != nil {
+	fmt.Fprintf(opts.Out, "Pulling %s:%s → %s\n", opts.Server, opts.RemoteDir, opts.SourceDir)
+	if err := extractWithConflicts(r, opts, prompt); err != nil {
 		return err
 	}
-
 	if err := sess.Wait(); err != nil {
 		return fmt.Errorf("remote: %w", err)
 	}
-
-	fmt.Fprintln(cfg.Out, "\nDone.")
+	fmt.Fprintln(opts.Out, "\nDone.")
 	return nil
 }
 
-func extractWithConflicts(r io.Reader, cfg SyncConfig, prompt conflictPromptFn) error {
+func extractWithConflicts(r io.Reader, opts Options, prompt ConflictPromptFn) error {
 	gr, err := gzip.NewReader(r)
 	if err != nil {
 		return fmt.Errorf("gzip: %w", err)
@@ -102,59 +105,53 @@ func extractWithConflicts(r io.Reader, cfg SyncConfig, prompt conflictPromptFn) 
 		if err != nil {
 			return fmt.Errorf("tar: %w", err)
 		}
-		// Only handle regular files; skip dirs, symlinks, etc.
 		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
 
-		// tar archives from "tar -czf - -C dir ." use "./" prefixed paths.
 		relPath := filepath.FromSlash(strings.TrimPrefix(hdr.Name, "./"))
 		if relPath == "" {
 			continue
 		}
-
-		absPath := filepath.Join(cfg.SourceDir, relPath)
+		absPath := filepath.Join(opts.SourceDir, relPath)
 
 		if _, err := os.Lstat(absPath); err == nil {
 			switch {
 			case skipAll:
-				fmt.Fprintf(cfg.Out, "  skip  %s\n", relPath)
+				fmt.Fprintf(opts.Out, "  skip  %s\n", relPath)
 				continue
 			case overwriteAll:
-				// fall through to write
+				// fall through
 			default:
 				choice, err := prompt(relPath)
 				if err != nil {
 					return err
 				}
 				switch choice {
-				case choiceSkip:
-					fmt.Fprintf(cfg.Out, "  skip  %s\n", relPath)
+				case ChoiceSkip:
+					fmt.Fprintf(opts.Out, "  skip  %s\n", relPath)
 					continue
-				case choiceSkipAll:
+				case ChoiceSkipAll:
 					skipAll = true
-					fmt.Fprintf(cfg.Out, "  skip  %s\n", relPath)
+					fmt.Fprintf(opts.Out, "  skip  %s\n", relPath)
 					continue
-				case choiceOverwrite:
+				case ChoiceOverwrite:
 					// fall through
-				case choiceOverwriteAll:
+				case ChoiceOverwriteAll:
 					overwriteAll = true
-					// fall through
-				case choiceAbort:
+				case ChoiceAbort:
 					return fmt.Errorf("aborted by user")
 				}
 			}
 		}
-
-		if err := writeExtractedFile(absPath, relPath, tr, cfg.Out); err != nil {
+		if err := writeFile(absPath, relPath, tr, opts.Out); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
-func writeExtractedFile(absPath, relPath string, r io.Reader, out io.Writer) error {
+func writeFile(absPath, relPath string, r io.Reader, out io.Writer) error {
 	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
 		return err
 	}
@@ -170,24 +167,24 @@ func writeExtractedFile(absPath, relPath string, r io.Reader, out io.Writer) err
 	return nil
 }
 
-// pullSingleFile downloads one specific remote file to localPath.
-func pullSingleFile(cfg SyncConfig, remotePath, localPath string, prompt conflictPromptFn) error {
+// PullFile downloads one specific remote file to localPath, prompting on conflict.
+func PullFile(opts Options, remotePath, localPath string, prompt ConflictPromptFn) error {
 	if _, err := os.Lstat(localPath); err == nil {
 		choice, err := prompt(localPath)
 		if err != nil {
 			return err
 		}
 		switch choice {
-		case choiceSkip, choiceSkipAll:
-			fmt.Fprintf(cfg.Out, "  skip  %s\n", localPath)
+		case ChoiceSkip, ChoiceSkipAll:
+			fmt.Fprintf(opts.Out, "  skip  %s\n", localPath)
 			return nil
-		case choiceAbort:
+		case ChoiceAbort:
 			return fmt.Errorf("aborted by user")
 		}
 	}
 
-	fmt.Fprintf(cfg.Out, "Connecting to %s...\n", cfg.Server)
-	client, err := connect(cfg, terminalPrompt)
+	fmt.Fprintf(opts.Out, "Connecting to %s...\n", opts.Server)
+	client, err := sshconn.Connect(opts.Server, opts.Identity, sshconn.TerminalPrompt)
 	if err != nil {
 		return err
 	}
@@ -209,14 +206,13 @@ func pullSingleFile(cfg SyncConfig, remotePath, localPath string, prompt conflic
 		return fmt.Errorf("remote start: %w", err)
 	}
 
-	fmt.Fprintf(cfg.Out, "Pulling %s:%s → %s\n", cfg.Server, remotePath, localPath)
-	if err := writeExtractedFile(localPath, localPath, r, cfg.Out); err != nil {
+	fmt.Fprintf(opts.Out, "Pulling %s:%s → %s\n", opts.Server, remotePath, localPath)
+	if err := writeFile(localPath, localPath, r, opts.Out); err != nil {
 		return err
 	}
-
 	if err := sess.Wait(); err != nil {
 		return fmt.Errorf("remote: %w", err)
 	}
-	fmt.Fprintln(cfg.Out, "Done.")
+	fmt.Fprintln(opts.Out, "Done.")
 	return nil
 }

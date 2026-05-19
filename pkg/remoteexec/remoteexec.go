@@ -1,4 +1,4 @@
-package main
+package remoteexec
 
 import (
 	"crypto/rand"
@@ -12,32 +12,15 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
+
+	"github.com/noobygames/gossh/pkg/sshconn"
+	"github.com/noobygames/gossh/pkg/transfer"
 )
 
-func cmdKubectl(args []string) error { return cmdRemoteTool("kubectl", args) }
-func cmdHelm(args []string) error    { return cmdRemoteTool("helm", args) }
-
-func cmdRemoteTool(tool string, args []string) error {
-	server, identity, toolArgs := extractGosshFlags(args)
-
-	fileCfg, err := loadConfig()
-	if err != nil {
-		return err
-	}
-
-	cfg := SyncConfig{
-		Server:   firstNonEmpty(server, fileCfg.Server),
-		Identity: firstNonEmpty(identity),
-		Out:      os.Stdout,
-	}
-
-	return execRemoteTool(cfg, tool, toolArgs)
-}
-
-// extractGosshFlags splits args into gossh flags (-server, -identity) and the
+// ExtractGosshFlags splits args into gossh flags (-server, -identity) and the
 // remainder. Parsing stops at the first argument that is not a recognised
 // gossh flag, so kubectl/helm arguments can follow without any separator.
-func extractGosshFlags(args []string) (server, identity string, rest []string) {
+func ExtractGosshFlags(args []string) (server, identity string, rest []string) {
 	for i := 0; i < len(args); i++ {
 		switch {
 		case args[i] == "-server" || args[i] == "--server":
@@ -66,8 +49,10 @@ func extractGosshFlags(args []string) (server, identity string, rest []string) {
 	return
 }
 
-func execRemoteTool(cfg SyncConfig, tool string, args []string) error {
-	// Collect local paths that appear in the args.
+// Exec uploads any local file/dir arguments to a remote temp directory,
+// substitutes paths in args, runs tool with the modified args on the remote
+// host, then removes the temp directory.
+func Exec(server, identity, tool string, args []string) error {
 	type upload struct {
 		localPath  string
 		remotePath string
@@ -78,8 +63,7 @@ func execRemoteTool(cfg SyncConfig, tool string, args []string) error {
 	remoteTempDir := ""
 
 	for _, arg := range args {
-		candidates := localPathCandidates(arg)
-		for _, localPath := range candidates {
+		for _, localPath := range localPathCandidates(arg) {
 			if !isLocalPath(localPath) {
 				continue
 			}
@@ -98,7 +82,7 @@ func execRemoteTool(cfg SyncConfig, tool string, args []string) error {
 		}
 	}
 
-	client, err := connect(cfg, terminalPrompt)
+	client, err := sshconn.Connect(server, identity, sshconn.TerminalPrompt)
 	if err != nil {
 		return err
 	}
@@ -112,11 +96,11 @@ func execRemoteTool(cfg SyncConfig, tool string, args []string) error {
 
 		for _, u := range uploads {
 			if u.isDir {
-				if err := uploadDirSSH(client, cfg.Out, u.localPath, u.remotePath); err != nil {
+				if err := uploadDir(client, os.Stdout, u.localPath, u.remotePath); err != nil {
 					return fmt.Errorf("upload %s: %w", u.localPath, err)
 				}
 			} else {
-				if err := uploadFileSSH(client, cfg.Out, u.localPath, u.remotePath); err != nil {
+				if err := uploadFile(client, os.Stdout, u.localPath, u.remotePath); err != nil {
 					return fmt.Errorf("upload %s: %w", u.localPath, err)
 				}
 			}
@@ -129,7 +113,6 @@ func execRemoteTool(cfg SyncConfig, tool string, args []string) error {
 	}
 
 	remoteArgs := substituteArgs(args, mapping)
-
 	parts := make([]string, 0, len(remoteArgs)+1)
 	parts = append(parts, tool)
 	for _, a := range remoteArgs {
@@ -138,9 +121,6 @@ func execRemoteTool(cfg SyncConfig, tool string, args []string) error {
 	return sshRunInteractive(client, strings.Join(parts, " "))
 }
 
-// localPathCandidates returns the path strings that should be checked for
-// local existence from a single argument.  Handles both "value" and
-// "--flag=value" forms.
 func localPathCandidates(arg string) []string {
 	if !strings.HasPrefix(arg, "-") {
 		return []string{arg}
@@ -159,7 +139,6 @@ func isLocalPath(s string) bool {
 	return err == nil
 }
 
-// substituteArgs replaces local paths in args with their remote counterparts.
 func substituteArgs(args []string, mapping map[string]string) []string {
 	out := make([]string, len(args))
 	for i, arg := range args {
@@ -180,8 +159,7 @@ func substituteArgs(args []string, mapping map[string]string) []string {
 	return out
 }
 
-// uploadFileSSH uploads a single local file using an existing SSH connection.
-func uploadFileSSH(client *ssh.Client, out io.Writer, localPath, remotePath string) error {
+func uploadFile(client *ssh.Client, out io.Writer, localPath, remotePath string) error {
 	f, err := os.Open(localPath)
 	if err != nil {
 		return err
@@ -205,8 +183,7 @@ func uploadFileSSH(client *ssh.Client, out io.Writer, localPath, remotePath stri
 		return fmt.Errorf("stdin pipe: %w", err)
 	}
 
-	cmd := fmt.Sprintf("mkdir -p %s && cat > %s", path.Dir(remotePath), remotePath)
-	if err := sess.Start(cmd); err != nil {
+	if err := sess.Start(fmt.Sprintf("mkdir -p %s && cat > %s", path.Dir(remotePath), remotePath)); err != nil {
 		return fmt.Errorf("remote start: %w", err)
 	}
 
@@ -220,8 +197,7 @@ func uploadFileSSH(client *ssh.Client, out io.Writer, localPath, remotePath stri
 	return sess.Wait()
 }
 
-// uploadDirSSH uploads a directory using tar over an existing SSH connection.
-func uploadDirSSH(client *ssh.Client, out io.Writer, localPath, remotePath string) error {
+func uploadDir(client *ssh.Client, out io.Writer, localPath, remotePath string) error {
 	sess, err := client.NewSession()
 	if err != nil {
 		return fmt.Errorf("session: %w", err)
@@ -239,13 +215,12 @@ func uploadDirSSH(client *ssh.Client, out io.Writer, localPath, remotePath strin
 	}
 
 	fmt.Fprintf(out, "  upload  %s/\n", localPath)
-	if err := archiveAndSend(pipe, out, localPath, nil); err != nil {
+	if err := transfer.ArchiveAndSend(pipe, out, localPath, nil); err != nil {
 		return err
 	}
 	return sess.Wait()
 }
 
-// sshRun runs a non-interactive command over an existing SSH connection.
 func sshRun(client *ssh.Client, cmd string) error {
 	sess, err := client.NewSession()
 	if err != nil {
@@ -256,9 +231,6 @@ func sshRun(client *ssh.Client, cmd string) error {
 	return sess.Run(cmd)
 }
 
-// sshRunInteractive runs a command with stdin/stdout/stderr attached. A PTY
-// is requested when the local stdin is a terminal, enabling interactive
-// commands such as kubectl exec -it.
 func sshRunInteractive(client *ssh.Client, cmd string) error {
 	sess, err := client.NewSession()
 	if err != nil {
@@ -277,7 +249,7 @@ func sshRunInteractive(client *ssh.Client, cmd string) error {
 		}
 		modes := ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 38400, ssh.TTY_OP_OSPEED: 38400}
 		if err := sess.RequestPty("xterm-256color", h, w, modes); err != nil {
-			// Non-fatal: proceed without PTY
+			// non-fatal: proceed without PTY
 		}
 	}
 

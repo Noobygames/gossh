@@ -7,6 +7,10 @@ import (
 	"os"
 	"slices"
 	"strings"
+
+	"github.com/noobygames/gossh/pkg/config"
+	"github.com/noobygames/gossh/pkg/remoteexec"
+	"github.com/noobygames/gossh/pkg/transfer"
 )
 
 var defaultExcludes = []string{
@@ -38,9 +42,9 @@ func main() {
 	case "ls":
 		err = cmdLS(os.Args[2:])
 	case "kubectl":
-		err = cmdKubectl(os.Args[2:])
+		err = cmdTool("kubectl", os.Args[2:])
 	case "helm":
-		err = cmdHelm(os.Args[2:])
+		err = cmdTool("helm", os.Args[2:])
 	case "version", "--version", "-version":
 		cmdVersion()
 	case "help", "-h", "--help", "-help":
@@ -70,27 +74,27 @@ func cmdPush(args []string) error {
 	fs.Var(&extra, "exclude", "Additional exclude pattern (repeatable, gitignore-style)")
 	fs.Parse(args) //nolint:errcheck // ExitOnError
 
-	fileCfg, err := loadConfig()
+	fileCfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
-	cfg := SyncConfig{
-		Server:    firstNonEmpty(*server, fileCfg.Server),
-		RemoteDir: firstNonEmpty(*remoteDir, fileCfg.RemoteDir, "~/kubernetes"),
+	opts := transfer.Options{
+		Server:    config.FirstNonEmpty(*server, fileCfg.Server),
+		RemoteDir: config.FirstNonEmpty(*remoteDir, fileCfg.RemoteDir, "~/kubernetes"),
 		DryRun:    *dryRun,
-		Identity:  firstNonEmpty(*identity),
+		Identity:  config.FirstNonEmpty(*identity),
 		Excludes:  slices.Concat(defaultExcludes, fileCfg.Excludes, []string(extra)),
 		Out:       os.Stdout,
 	}
 
 	switch fs.NArg() {
 	case 0:
-		cfg.SourceDir = "."
-		return run(cfg)
+		opts.SourceDir = "."
+		return transfer.Push(opts)
 	case 1:
-		cfg.SourceDir = fs.Arg(0)
-		return run(cfg)
+		opts.SourceDir = fs.Arg(0)
+		return transfer.Push(opts)
 	case 2:
 		localPath, remotePath := fs.Arg(0), fs.Arg(1)
 		info, err := os.Stat(localPath)
@@ -98,11 +102,11 @@ func cmdPush(args []string) error {
 			return err
 		}
 		if info.IsDir() {
-			cfg.SourceDir = localPath
-			cfg.RemoteDir = remotePath
-			return run(cfg)
+			opts.SourceDir = localPath
+			opts.RemoteDir = remotePath
+			return transfer.Push(opts)
 		}
-		return pushFile(cfg, localPath, remotePath)
+		return transfer.PushFile(opts, localPath, remotePath)
 	default:
 		return fmt.Errorf("too many arguments — run 'gossh help push'")
 	}
@@ -113,28 +117,68 @@ func cmdPull(args []string) error {
 	server, remoteDir, identity := commonFlags(fs)
 	fs.Parse(args) //nolint:errcheck // ExitOnError
 
-	fileCfg, err := loadConfig()
+	fileCfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
-	cfg := SyncConfig{
-		Server:    firstNonEmpty(*server, fileCfg.Server),
-		RemoteDir: firstNonEmpty(*remoteDir, fileCfg.RemoteDir, "~/kubernetes"),
-		Identity:  firstNonEmpty(*identity),
+	opts := transfer.Options{
+		Server:    config.FirstNonEmpty(*server, fileCfg.Server),
+		RemoteDir: config.FirstNonEmpty(*remoteDir, fileCfg.RemoteDir, "~/kubernetes"),
+		Identity:  config.FirstNonEmpty(*identity),
 		Out:       os.Stdout,
 	}
 
 	switch fs.NArg() {
 	case 0:
-		cfg.SourceDir = "."
-		return pullFiles(cfg, terminalConflictPrompt)
+		opts.SourceDir = "."
+		return transfer.Pull(opts, transfer.TerminalConflictPrompt)
 	case 1:
-		cfg.SourceDir = fs.Arg(0)
-		return pullFiles(cfg, terminalConflictPrompt)
+		opts.SourceDir = fs.Arg(0)
+		return transfer.Pull(opts, transfer.TerminalConflictPrompt)
 	case 2:
-		return pullSingleFile(cfg, fs.Arg(0), fs.Arg(1), terminalConflictPrompt)
+		return transfer.PullFile(opts, fs.Arg(0), fs.Arg(1), transfer.TerminalConflictPrompt)
 	default:
 		return fmt.Errorf("too many arguments — run 'gossh help pull'")
 	}
+}
+
+func cmdLS(args []string) error {
+	fs := flag.NewFlagSet("ls", flag.ExitOnError)
+	server, remoteDir, identity := commonFlags(fs)
+	long := fs.Bool("l", false, "Long listing format")
+	all := fs.Bool("a", false, "Include hidden entries")
+	human := fs.Bool("h", false, "Human-readable sizes (with -l)")
+	recursive := fs.Bool("R", false, "Recursive")
+	fs.Parse(args) //nolint:errcheck // ExitOnError
+
+	fileCfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	remotePath := config.FirstNonEmpty(*remoteDir, fileCfg.RemoteDir, "~/kubernetes")
+	if fs.NArg() > 0 {
+		remotePath = fs.Arg(0)
+	}
+
+	return transfer.LS(transfer.Options{
+		Server:   config.FirstNonEmpty(*server, fileCfg.Server),
+		Identity: config.FirstNonEmpty(*identity),
+		Out:      os.Stdout,
+	}, remotePath, *long, *all, *human, *recursive)
+}
+
+func cmdTool(tool string, args []string) error {
+	server, identity, toolArgs := remoteexec.ExtractGosshFlags(args)
+	fileCfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	return remoteexec.Exec(
+		config.FirstNonEmpty(server, fileCfg.Server),
+		config.FirstNonEmpty(identity),
+		tool,
+		toolArgs,
+	)
 }

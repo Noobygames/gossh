@@ -1,4 +1,4 @@
-package main
+package transfer
 
 import (
 	"archive/tar"
@@ -9,21 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-)
 
-type SyncConfig struct {
-	SourceDir string
-	Server    string
-	RemoteDir string
-	Identity  string
-	Excludes  []string
-	DryRun    bool
-	Out       io.Writer
-}
+	"github.com/noobygames/gossh/pkg/config"
+)
 
 type fileVisitor func(absPath, relPath string, info fs.FileInfo) error
 
-// relPath uses slash separators for cross-platform tar compatibility.
 func walkDir(sourceDir string, fn func(absPath string, d fs.DirEntry, relPath string) error) error {
 	abs, err := filepath.Abs(sourceDir)
 	if err != nil {
@@ -63,10 +54,11 @@ func walkFiltered(sourceDir string, excludes []string, visit fileVisitor) error 
 	})
 }
 
-func archiveAndSend(w io.WriteCloser, out io.Writer, sourceDir string, excludes []string) error {
+// ArchiveAndSend packs sourceDir (excluding excludes) into a gzip-compressed
+// tar stream written to w. w is closed on success.
+func ArchiveAndSend(w io.WriteCloser, out io.Writer, sourceDir string, excludes []string) error {
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
-
 	if err := writeTar(tw, out, sourceDir, excludes); err != nil {
 		return fmt.Errorf("tar: %w", err)
 	}
@@ -91,24 +83,21 @@ func addFile(tw *tar.Writer, out io.Writer, absPath, relPath string, info fs.Fil
 		return err
 	}
 	hdr.Name = relPath
-
 	fmt.Fprintf(out, "  add   %s\n", relPath)
-
 	if err := tw.WriteHeader(hdr); err != nil {
 		return err
 	}
-
 	f, err := os.Open(absPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-
 	_, err = io.Copy(tw, f)
 	return err
 }
 
-func listFiles(out io.Writer, sourceDir string, excludes []string) error {
+// ListFiles prints the files that would be synced from sourceDir, used by dry-run.
+func ListFiles(out io.Writer, sourceDir string, excludes []string) error {
 	return walkDir(sourceDir, func(_ string, d fs.DirEntry, relPath string) error {
 		if isExcluded(relPath, excludes) {
 			fmt.Fprintf(out, "  SKIP  %s\n", relPath)
@@ -124,9 +113,6 @@ func listFiles(out io.Writer, sourceDir string, excludes []string) error {
 	})
 }
 
-// isExcluded evaluates excludes as gitignore-style patterns against relPath.
-// Lines starting with "#" or empty lines are ignored.
-// A leading "!" negates the pattern; last match wins.
 func isExcluded(relPath string, excludes []string) bool {
 	excluded := false
 	for _, p := range excludes {
@@ -138,7 +124,7 @@ func isExcluded(relPath string, excludes []string) bool {
 		if negated {
 			p = p[1:]
 		}
-		if matchPattern(relPath, p) {
+		if config.MatchPattern(relPath, p) {
 			excluded = !negated
 		}
 	}

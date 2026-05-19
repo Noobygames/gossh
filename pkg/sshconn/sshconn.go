@@ -1,4 +1,4 @@
-package main
+package sshconn
 
 import (
 	"fmt"
@@ -11,28 +11,32 @@ import (
 	"golang.org/x/term"
 )
 
+// PassphrasePrompt is called when a private key requires a passphrase.
 type PassphrasePrompt func(keyPath string) ([]byte, error)
 
-func terminalPrompt(keyPath string) ([]byte, error) {
+// TerminalPrompt reads a passphrase interactively from the terminal.
+var TerminalPrompt PassphrasePrompt = func(keyPath string) ([]byte, error) {
 	fmt.Fprintf(os.Stderr, "Passphrase for %s: ", keyPath)
 	p, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Fprintln(os.Stderr)
 	return p, err
 }
 
-func connect(cfg SyncConfig, prompt PassphrasePrompt) (*ssh.Client, error) {
+// Connect dials server (user@host[:port]) using key authentication.
+// identity specifies a key path; if empty, standard ~/.ssh locations are tried.
+func Connect(server, identity string, prompt PassphrasePrompt) (*ssh.Client, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("user home dir: %w", err)
 	}
-	auth, err := loadAuth(cfg.Identity, home, prompt)
+	auth, err := loadAuth(identity, home, prompt)
 	if err != nil {
 		return nil, err
 	}
 	if len(auth) == 0 {
 		return nil, fmt.Errorf("no SSH auth: use -identity or ensure ~/.ssh/id_ed25519 or ~/.ssh/id_rsa exists")
 	}
-	user, host, err := parseTarget(cfg.Server)
+	user, host, err := ParseTarget(server)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +55,8 @@ func connect(cfg SyncConfig, prompt PassphrasePrompt) (*ssh.Client, error) {
 	return client, nil
 }
 
-func parseTarget(server string) (user, host string, err error) {
+// ParseTarget splits "user@host[:port]" into user and host:port.
+func ParseTarget(server string) (user, host string, err error) {
 	parts := strings.SplitN(server, "@", 2)
 	if len(parts) != 2 || parts[0] == "" {
 		return "", "", fmt.Errorf("invalid server %q: expected user@host", server)
@@ -87,7 +92,7 @@ func loadAuth(identity, home string, prompt PassphrasePrompt) ([]ssh.AuthMethod,
 func keyAuth(path string, prompt PassphrasePrompt) (ssh.AuthMethod, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil // key absent: skip silently
+		return nil, nil
 	}
 	signer, err := ssh.ParsePrivateKey(data)
 	if err == nil {
@@ -106,4 +111,3 @@ func keyAuth(path string, prompt PassphrasePrompt) (ssh.AuthMethod, error) {
 	}
 	return ssh.PublicKeys(signer), nil
 }
-
