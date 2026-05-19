@@ -1,6 +1,6 @@
 # gomvtossh
 
-Syncs a local directory to a remote server over SSH. Files are packed into a tar+gzip stream and piped directly into the remote `tar` command — no temporary files on either side.
+Syncs a local directory to/from a remote server over SSH using tar+gzip streams — no temporary files on either side.
 
 Designed for deploying Kubernetes manifests and similar config directories where only the files themselves (not symlinks or special permissions) need to be transferred.
 
@@ -21,12 +21,18 @@ go build -o gomvtossh .
 ## Usage
 
 ```
-gomvtossh [flags] [source-dir]
+gomvtossh <push|pull> [flags] [dir]
 ```
 
-`source-dir` defaults to `.` (the current directory).
+`dir` defaults to `.` (the current directory).
 
-### Flags
+### push
+
+Transfers a local directory to the remote host.
+
+```
+gomvtossh push [flags] [source-dir]
+```
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -34,26 +40,51 @@ gomvtossh [flags] [source-dir]
 | `-remote-dir` | `~/kubernetes` | Destination directory on the remote host |
 | `-identity` | auto | SSH private key path |
 | `-exclude` | | Extra name to exclude (repeatable) |
-| `-dry-run` | `false` | List files that would be synced, without transferring |
-
-### Examples
+| `-dry-run` | `false` | List files that would be transferred, without transferring |
 
 ```sh
-# Sync current directory to ~/kubernetes on the remote host
-gomvtossh -server deploy@myserver.example.com
+# Push current directory to ~/kubernetes
+gomvtossh push -server deploy@myserver.example.com
 
-# Sync a specific directory, skip extra patterns
-gomvtossh -server deploy@myserver.example.com \
+# Push a specific directory, skip extra patterns
+gomvtossh push -server deploy@myserver.example.com \
   -exclude dist -exclude node_modules \
   ./my-configs
 
-# Preview what would be transferred
-gomvtossh -server deploy@myserver.example.com -dry-run
+# Preview what would be pushed
+gomvtossh push -server deploy@myserver.example.com -dry-run
 ```
 
-## Default excludes
+### pull
 
-These names are always excluded, regardless of where they appear in the directory tree:
+Downloads files from the remote directory to a local directory. When a file already exists locally, you are prompted to choose:
+
+```
+  conflict  subdir/file.yaml
+    [s]kip  [S]kip all  [o]verwrite  [O]verwrite all  [a]bort:
+```
+
+```
+gomvtossh pull [flags] [local-dir]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-server` | *(required)* | SSH target: `user@host` or `user@host:port` |
+| `-remote-dir` | `~/kubernetes` | Source directory on the remote host |
+| `-identity` | auto | SSH private key path |
+
+```sh
+# Pull ~/kubernetes from remote into the current directory
+gomvtossh pull -server deploy@myserver.example.com
+
+# Pull into a specific local directory
+gomvtossh pull -server deploy@myserver.example.com ./my-configs
+```
+
+## Default push excludes
+
+These names are always excluded during push, regardless of depth in the tree:
 
 - `.git`
 - `secret.yml`
