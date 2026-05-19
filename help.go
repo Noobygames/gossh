@@ -40,6 +40,7 @@ Commands:
   ls      List files on the remote host
   kubectl Run kubectl on the remote host; local file args are auto-uploaded
   helm    Run helm on the remote host; local file args are auto-uploaded
+  version Show version information
   help    Show help for a command
 
 Examples:

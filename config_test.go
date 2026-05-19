@@ -147,6 +147,10 @@ func TestLoadConfigMissing(t *testing.T) {
 	must(t, os.Chdir(dir))
 	defer os.Chdir(orig) //nolint:errcheck
 
+	// Redirect HOME so the fallback ~/.gossh.yml is not found either.
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+
 	cfg, err := loadConfig()
 	must(t, err)
 

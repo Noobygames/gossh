@@ -41,6 +41,8 @@ func main() {
 		err = cmdKubectl(os.Args[2:])
 	case "helm":
 		err = cmdHelm(os.Args[2:])
+	case "version", "--version", "-version":
+		cmdVersion()
 	case "help", "-h", "--help", "-help":
 		cmdHelp(os.Args[2:])
 	default:
