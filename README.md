@@ -121,6 +121,56 @@ gossh ls -server deploy@host.example.com -l ~/kubernetes/manifests
 
 ---
 
+### kubectl
+
+Runs `kubectl` on the remote host. Arguments that are local files or directories
+are automatically uploaded to a temporary remote directory, substituted in the
+command, and cleaned up after execution.
+
+`-server` and `-identity` must come **before** the kubectl subcommand. Everything
+after the first non-gossh argument is passed to kubectl unchanged.
+
+```
+gossh kubectl [-server host] [-identity key] <kubectl args...>
+```
+
+```sh
+# Apply a local manifest
+gossh kubectl apply -f ./manifest.yaml
+
+# Apply an entire local directory
+gossh kubectl apply -f ./manifests/
+
+# Works with --filename= form too
+gossh kubectl apply --filename=./deploy.yaml --dry-run=client
+
+# Interactive commands get a PTY automatically
+gossh kubectl exec -it mypod -- bash
+```
+
+---
+
+### helm
+
+Same auto-upload behaviour as `kubectl`, for Helm charts and values files.
+
+```
+gossh helm [-server host] [-identity key] <helm args...>
+```
+
+```sh
+# Install a local chart
+gossh helm install myrelease ./my-chart/
+
+# Install with a local values file
+gossh helm install myrelease ./my-chart/ -f ./values-prod.yaml
+
+# Upgrade with --install
+gossh helm upgrade myrelease ./my-chart/ --install
+```
+
+---
+
 ## Configuration
 
 Create `.gossh.yml` in the project directory (or `~/.gossh.yml` as a user default).

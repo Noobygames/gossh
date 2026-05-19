@@ -15,6 +15,10 @@ func cmdHelp(args []string) {
 			helpPull()
 		case "ls":
 			helpLS()
+		case "kubectl":
+			helpKubectl()
+		case "helm":
+			helpHelm()
 		default:
 			fmt.Fprintf(os.Stderr, "unknown command %q\n\n", args[0])
 			helpAll()
@@ -34,14 +38,18 @@ Commands:
   push    Upload a local file or directory to the remote host
   pull    Download a remote file or directory to the local machine
   ls      List files on the remote host
+  kubectl Run kubectl on the remote host; local file args are auto-uploaded
+  helm    Run helm on the remote host; local file args are auto-uploaded
   help    Show help for a command
 
 Examples:
-  gossh push -server deploy@host.example.com
-  gossh push -server deploy@host.example.com ./file.yaml ~/kubernetes/file.yaml
-  gossh pull -server deploy@host.example.com
-  gossh pull -server deploy@host.example.com ~/kubernetes/file.yaml ./file.yaml
-  gossh ls   -server deploy@host.example.com -l
+  gossh push    -server deploy@host.example.com
+  gossh push    -server deploy@host.example.com ./file.yaml ~/kubernetes/file.yaml
+  gossh pull    -server deploy@host.example.com
+  gossh pull    -server deploy@host.example.com ~/kubernetes/file.yaml ./file.yaml
+  gossh ls      -server deploy@host.example.com -l
+  gossh kubectl -server deploy@host.example.com apply -f ./manifests/
+  gossh helm    -server deploy@host.example.com install myrelease ./chart/
   gossh help push
 
 Configuration (.gossh.yml in the project or home directory):
@@ -105,6 +113,47 @@ Flags:
 	_ = remoteDir
 	_ = identity
 	fs.PrintDefaults()
+}
+
+func helpKubectl() {
+	fmt.Fprint(os.Stderr, `Usage:
+  gossh kubectl [-server host] [-identity key] <kubectl args...>
+
+  Runs kubectl on the remote host. Arguments that point to local files or
+  directories are automatically uploaded to a temporary remote directory,
+  replaced with their remote paths, and cleaned up after the command exits.
+
+  gossh flags (-server, -identity) must come before the kubectl subcommand.
+  If a .gossh.yml config is present, -server can be omitted.
+
+Examples:
+  gossh kubectl apply -f ./manifest.yaml
+  gossh kubectl apply -f ./manifests/
+  gossh kubectl apply -f ./deploy.yaml --dry-run=client
+  gossh kubectl -server deploy@host.example.com get pods -n production
+  gossh kubectl exec -it mypod -- bash
+
+`)
+}
+
+func helpHelm() {
+	fmt.Fprint(os.Stderr, `Usage:
+  gossh helm [-server host] [-identity key] <helm args...>
+
+  Runs helm on the remote host. Arguments that point to local files or
+  directories (e.g. chart paths, values files) are automatically uploaded
+  to a temporary remote directory and cleaned up after the command exits.
+
+  gossh flags (-server, -identity) must come before the helm subcommand.
+  If a .gossh.yml config is present, -server can be omitted.
+
+Examples:
+  gossh helm install myrelease ./my-chart/
+  gossh helm install myrelease ./my-chart/ -f ./values.yaml
+  gossh helm upgrade myrelease ./my-chart/ --install
+  gossh helm -server deploy@host.example.com list
+
+`)
 }
 
 func helpLS() {

@@ -37,6 +37,10 @@ func main() {
 		err = cmdPull(os.Args[2:])
 	case "ls":
 		err = cmdLS(os.Args[2:])
+	case "kubectl":
+		err = cmdKubectl(os.Args[2:])
+	case "helm":
+		err = cmdHelm(os.Args[2:])
 	case "help", "-h", "--help", "-help":
 		cmdHelp(os.Args[2:])
 	default:
