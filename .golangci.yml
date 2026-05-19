@@ -1,18 +1,18 @@
+version: "2"
+
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
     - govet
     - staticcheck
-    - gosimple
     - ineffassign
-    - unused
     - misspell
     - revive
     - gocritic
     - gofmt
 
-linters-settings:
+settings:
   revive:
     rules:
       - name: exported
