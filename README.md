@@ -1,4 +1,4 @@
-# gomvtossh
+# gossh
 
 Syncs files and directories to/from a remote server over SSH — no temporary files on either side.
 
@@ -7,24 +7,24 @@ Designed for deploying Kubernetes manifests and similar config directories.
 ## Installation
 
 ```sh
-go install github.com/noobygames/gomvtossh@latest
+go install github.com/noobygames/gossh@latest
 ```
 
 Or build from source:
 
 ```sh
-git clone https://github.com/noobygames/gomvtossh
-cd gomvtossh
-go build -o gomvtossh .
+git clone https://github.com/noobygames/gossh
+cd gossh
+go build -o gossh .
 ```
 
 ## Commands
 
 ```
-gomvtossh <command> [flags] [args]
+gossh <command> [flags] [args]
 ```
 
-Run `gomvtossh help` for an overview, or `gomvtossh help <command>` for detailed flags.
+Run `gossh help` for an overview, or `gossh help <command>` for detailed flags.
 
 ---
 
@@ -33,7 +33,7 @@ Run `gomvtossh help` for an overview, or `gomvtossh help <command>` for detailed
 Uploads a local directory or single file to the remote host.
 
 ```
-gomvtossh push [flags] [source] [remote-path]
+gossh push [flags] [source] [remote-path]
 ```
 
 | Flag | Default | Description |
@@ -46,16 +46,16 @@ gomvtossh push [flags] [source] [remote-path]
 
 ```sh
 # Push current directory to ~/kubernetes
-gomvtossh push -server deploy@host.example.com
+gossh push -server deploy@host.example.com
 
 # Push a specific directory with extra excludes
-gomvtossh push -server deploy@host.example.com -exclude dist ./my-configs
+gossh push -server deploy@host.example.com -exclude dist ./my-configs
 
 # Push a single file to an exact remote path
-gomvtossh push -server deploy@host.example.com ./deploy.yaml ~/kubernetes/deploy.yaml
+gossh push -server deploy@host.example.com ./deploy.yaml ~/kubernetes/deploy.yaml
 
 # Preview what would be pushed
-gomvtossh push -server deploy@host.example.com -dry-run
+gossh push -server deploy@host.example.com -dry-run
 ```
 
 ---
@@ -71,7 +71,7 @@ exists locally, you are prompted:
 ```
 
 ```
-gomvtossh pull [flags] [remote-path local-path | local-dir]
+gossh pull [flags] [remote-path local-path | local-dir]
 ```
 
 | Flag | Default | Description |
@@ -82,13 +82,13 @@ gomvtossh pull [flags] [remote-path local-path | local-dir]
 
 ```sh
 # Pull ~/kubernetes into the current directory
-gomvtossh pull -server deploy@host.example.com
+gossh pull -server deploy@host.example.com
 
 # Pull into a specific local directory
-gomvtossh pull -server deploy@host.example.com ./my-configs
+gossh pull -server deploy@host.example.com ./my-configs
 
 # Pull a single remote file to a local path
-gomvtossh pull -server deploy@host.example.com ~/kubernetes/deploy.yaml ./deploy.yaml
+gossh pull -server deploy@host.example.com ~/kubernetes/deploy.yaml ./deploy.yaml
 ```
 
 ---
@@ -98,7 +98,7 @@ gomvtossh pull -server deploy@host.example.com ~/kubernetes/deploy.yaml ./deploy
 Lists files on the remote host.
 
 ```
-gomvtossh ls [flags] [remote-path]
+gossh ls [flags] [remote-path]
 ```
 
 | Flag | Default | Description |
@@ -113,17 +113,17 @@ gomvtossh ls [flags] [remote-path]
 
 ```sh
 # List ~/kubernetes
-gomvtossh ls -server deploy@host.example.com
+gossh ls -server deploy@host.example.com
 
 # Long listing of a specific path
-gomvtossh ls -server deploy@host.example.com -l ~/kubernetes/manifests
+gossh ls -server deploy@host.example.com -l ~/kubernetes/manifests
 ```
 
 ---
 
 ## Configuration
 
-Create `.gomvtossh.yml` in the project directory (or `~/.gomvtossh.yml` as a user default).
+Create `.gossh.yml` in the project directory (or `~/.gossh.yml` as a user default).
 Flags always override config values.
 
 ```yaml
@@ -153,7 +153,7 @@ The `excludes` list uses [gitignore](https://git-scm.com/docs/gitignore) syntax:
 
 - `.git`
 - `sealed-secrets-master-key-backup.yaml`
-- `gomvtossh` (the binary itself)
+- `gossh` (the binary itself)
 
 Config `excludes` and `-exclude` flags are appended on top of these.
 

@@ -16,12 +16,12 @@ type fileConfig struct {
 	Excludes  []string `yaml:"excludes"`
 }
 
-// loadConfig searches for .gomvtossh.yml in the current directory, then in
+// loadConfig searches for .gossh.yml in the current directory, then in
 // the user's home directory. Returns an empty config if no file is found.
 func loadConfig() (fileConfig, error) {
-	candidates := []string{".gomvtossh.yml"}
+	candidates := []string{".gossh.yml"}
 	if home, err := os.UserHomeDir(); err == nil {
-		candidates = append(candidates, filepath.Join(home, ".gomvtossh.yml"))
+		candidates = append(candidates, filepath.Join(home, ".gossh.yml"))
 	}
 	for _, p := range candidates {
 		data, err := os.ReadFile(p)

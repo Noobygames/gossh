@@ -12,7 +12,7 @@ import (
 var defaultExcludes = []string{
 	".git",
 	"sealed-secrets-master-key-backup.yaml",
-	"gomvtossh",
+	"gossh",
 }
 
 type stringSlice []string
@@ -98,7 +98,7 @@ func cmdPush(args []string) error {
 		}
 		return pushFile(cfg, localPath, remotePath)
 	default:
-		return fmt.Errorf("too many arguments — run 'gomvtossh help push'")
+		return fmt.Errorf("too many arguments — run 'gossh help push'")
 	}
 }
 
@@ -129,6 +129,6 @@ func cmdPull(args []string) error {
 	case 2:
 		return pullSingleFile(cfg, fs.Arg(0), fs.Arg(1), terminalConflictPrompt)
 	default:
-		return fmt.Errorf("too many arguments — run 'gomvtossh help pull'")
+		return fmt.Errorf("too many arguments — run 'gossh help pull'")
 	}
 }

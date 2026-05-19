@@ -25,10 +25,10 @@ func cmdHelp(args []string) {
 }
 
 func helpAll() {
-	fmt.Fprint(os.Stderr, `gomvtossh — sync files and directories over SSH
+	fmt.Fprint(os.Stderr, `gossh — sync files and directories over SSH
 
 Usage:
-  gomvtossh <command> [flags] [args]
+  gossh <command> [flags] [args]
 
 Commands:
   push    Upload a local file or directory to the remote host
@@ -37,14 +37,14 @@ Commands:
   help    Show help for a command
 
 Examples:
-  gomvtossh push -server deploy@host.example.com
-  gomvtossh push -server deploy@host.example.com ./file.yaml ~/kubernetes/file.yaml
-  gomvtossh pull -server deploy@host.example.com
-  gomvtossh pull -server deploy@host.example.com ~/kubernetes/file.yaml ./file.yaml
-  gomvtossh ls   -server deploy@host.example.com -l
-  gomvtossh help push
+  gossh push -server deploy@host.example.com
+  gossh push -server deploy@host.example.com ./file.yaml ~/kubernetes/file.yaml
+  gossh pull -server deploy@host.example.com
+  gossh pull -server deploy@host.example.com ~/kubernetes/file.yaml ./file.yaml
+  gossh ls   -server deploy@host.example.com -l
+  gossh help push
 
-Configuration (.gomvtossh.yml in the project or home directory):
+Configuration (.gossh.yml in the project or home directory):
   server:     user@host
   remote-dir: ~/kubernetes
   excludes:
@@ -52,13 +52,13 @@ Configuration (.gomvtossh.yml in the project or home directory):
     - "dist/"
     - "**/vendor/"
 
-Run "gomvtossh help <command>" for command-specific flags.
+Run "gossh help <command>" for command-specific flags.
 `)
 }
 
 func helpPush() {
 	fmt.Fprint(os.Stderr, `Usage:
-  gomvtossh push [flags] [source] [remote-path]
+  gossh push [flags] [source] [remote-path]
 
   Uploads a local directory to -remote-dir on the remote host.
   With two path arguments, uploads source (file or directory) to
@@ -83,8 +83,8 @@ Flags:
 
 func helpPull() {
 	fmt.Fprint(os.Stderr, `Usage:
-  gomvtossh pull [flags] [remote-path local-path]
-  gomvtossh pull [flags] [local-dir]
+  gossh pull [flags] [remote-path local-path]
+  gossh pull [flags] [local-dir]
 
   Downloads the remote directory to a local directory (default: .).
   With two path arguments, downloads a single remote file to local-path.
@@ -109,7 +109,7 @@ Flags:
 
 func helpLS() {
 	fmt.Fprint(os.Stderr, `Usage:
-  gomvtossh ls [flags] [remote-path]
+  gossh ls [flags] [remote-path]
 
   Lists files on the remote host. Defaults to -remote-dir.
 

@@ -1,4 +1,4 @@
-module github.com/noobygames/gomvtossh
+module github.com/noobygames/gossh
 
 go 1.25.0
 

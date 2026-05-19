@@ -119,7 +119,7 @@ excludes:
   - "*.bak"
   - "dist/"
 `
-	must(t, os.WriteFile(filepath.Join(dir, ".gomvtossh.yml"), []byte(content), 0644))
+	must(t, os.WriteFile(filepath.Join(dir, ".gossh.yml"), []byte(content), 0644))
 
 	orig, err := os.Getwd()
 	must(t, err)
