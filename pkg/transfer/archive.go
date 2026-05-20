@@ -55,17 +55,20 @@ func walkFiltered(sourceDir string, excludes []string, visit fileVisitor) error 
 }
 
 // ArchiveAndSend packs sourceDir (excluding excludes) into a gzip-compressed
-// tar stream written to w. w is closed on success.
+// tar stream written to w. w is always closed, on both success and failure.
 func ArchiveAndSend(w io.WriteCloser, out io.Writer, sourceDir string, excludes []string) error {
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
 	if err := writeTar(tw, out, sourceDir, excludes); err != nil {
+		_ = w.Close()
 		return fmt.Errorf("tar: %w", err)
 	}
 	if err := tw.Close(); err != nil {
+		_ = w.Close()
 		return fmt.Errorf("tar close: %w", err)
 	}
 	if err := gz.Close(); err != nil {
+		_ = w.Close()
 		return fmt.Errorf("gzip close: %w", err)
 	}
 	return w.Close()
@@ -83,7 +86,6 @@ func addFile(tw *tar.Writer, out io.Writer, absPath, relPath string, info fs.Fil
 		return err
 	}
 	hdr.Name = relPath
-	fmt.Fprintf(out, "  add   %s\n", relPath)
 	if err := tw.WriteHeader(hdr); err != nil {
 		return err
 	}
@@ -92,8 +94,11 @@ func addFile(tw *tar.Writer, out io.Writer, absPath, relPath string, info fs.Fil
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(tw, f)
-	return err
+	if _, err = io.Copy(tw, f); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "  add   %s\n", relPath)
+	return nil
 }
 
 // ListFiles prints the files that would be synced from sourceDir, used by dry-run.
@@ -116,17 +121,28 @@ func ListFiles(out io.Writer, sourceDir string, excludes []string) error {
 func isExcluded(relPath string, excludes []string) bool {
 	excluded := false
 	for _, p := range excludes {
-		p = strings.TrimSpace(p)
-		if p == "" || strings.HasPrefix(p, "#") {
-			continue
-		}
-		negated := strings.HasPrefix(p, "!")
-		if negated {
-			p = p[1:]
-		}
-		if config.MatchPattern(relPath, p) {
-			excluded = !negated
-		}
+		excluded = applyPattern(excluded, relPath, p)
 	}
 	return excluded
+}
+
+// applyPattern evaluates one gitignore-style pattern against relPath and
+// returns the updated excluded state (last-match-wins semantics).
+func applyPattern(excluded bool, relPath, pattern string) bool {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" || strings.HasPrefix(pattern, "#") {
+		return excluded
+	}
+	negated := strings.HasPrefix(pattern, "!")
+	if negated {
+		pattern = pattern[1:]
+	}
+	if config.MatchPattern(relPath, pattern) {
+		return !negated
+	}
+	return excluded
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

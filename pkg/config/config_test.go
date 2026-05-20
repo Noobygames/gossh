@@ -5,63 +5,66 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/noobygames/gossh/pkg/config"
 )
 
-func must(t *testing.T, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestMatchPattern(t *testing.T) {
 	tests := []struct {
+		name    string
 		pattern string
 		path    string
 		want    bool
 	}{
-		{"*.log", "debug.log", true},
-		{"*.log", "src/debug.log", true},
-		{"*.log", "src/sub/debug.log", true},
-		{"*.log", "src/debug.go", false},
-		{"node_modules", "node_modules/pkg", true},
-		{"node_modules", "a/node_modules/pkg", true},
-		{"node_modules", "a/not_node_modules/pkg", false},
-		{"dist/", "dist/main.js", true},
-		{"dist/", "a/dist/main.js", true},
-		{"/vendor", "vendor", true},
-		{"/vendor", "a/vendor", false},
-		{"src/*.go", "src/main.go", true},
-		{"src/*.go", "other/src/main.go", false},
-		{"src/*.go", "src/sub/main.go", false},
-		{"**/node_modules", "node_modules", true},
-		{"**/node_modules", "a/node_modules", true},
-		{"**/node_modules", "a/b/node_modules", true},
-		{"**/node_modules", "a/b/node_modulesX", false},
-		{"src/**/*.go", "src/main.go", true},
-		{"src/**/*.go", "src/sub/main.go", true},
-		{"src/**/*.go", "src/a/b/main.go", true},
-		{"src/**/*.go", "other/main.go", false},
-		{"src/**", "src/anything", true},
-		{"src/**", "src", true},
+		{"glob any segment", "*.log", "debug.log", true},
+		{"glob in subdirectory", "*.log", "src/debug.log", true},
+		{"glob in nested subdirectory", "*.log", "src/sub/debug.log", true},
+		{"glob no match", "*.log", "src/debug.go", false},
+		{"name any segment", "node_modules", "node_modules/pkg", true},
+		{"name nested segment", "node_modules", "a/node_modules/pkg", true},
+		{"name partial no match", "node_modules", "a/not_node_modules/pkg", false},
+		{"trailing slash matches dir segment", "dist/", "dist/main.js", true},
+		{"trailing slash nested", "dist/", "a/dist/main.js", true},
+		{"root anchor exact", "/vendor", "vendor", true},
+		{"root anchor no nested match", "/vendor", "a/vendor", false},
+		{"anchored glob", "src/*.go", "src/main.go", true},
+		{"anchored glob other dir", "src/*.go", "other/src/main.go", false},
+		{"anchored glob subdirectory", "src/*.go", "src/sub/main.go", false},
+		{"double-star prefix", "**/node_modules", "node_modules", true},
+		{"double-star single level", "**/node_modules", "a/node_modules", true},
+		{"double-star nested", "**/node_modules", "a/b/node_modules", true},
+		{"double-star partial no match", "**/node_modules", "a/b/node_modulesX", false},
+		{"double-star in middle shallow", "src/**/*.go", "src/main.go", true},
+		{"double-star in middle deep", "src/**/*.go", "src/sub/main.go", true},
+		{"double-star in middle nested", "src/**/*.go", "src/a/b/main.go", true},
+		{"double-star in middle other dir", "src/**/*.go", "other/main.go", false},
+		{"double-star suffix", "src/**", "src/anything", true},
+		{"double-star suffix exact", "src/**", "src", true},
+		// Malformed patterns must not panic and must not match.
+		{"malformed bracket no match", "[abc", "foo.go", false},
+		{"malformed bracket anchored no match", "/[abc", "foo.go", false},
 	}
 	for _, tt := range tests {
-		got := config.MatchPattern(tt.path, tt.pattern)
-		if got != tt.want {
-			t.Errorf("MatchPattern(%q, %q) = %v, want %v", tt.path, tt.pattern, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, config.MatchPattern(tt.path, tt.pattern))
+		})
 	}
 }
 
+func TestGlobMatchMalformedPattern(t *testing.T) {
+	assert.False(t, config.GlobMatch("[abc", "foo.go"), "malformed pattern should not match")
+	assert.False(t, config.GlobMatch("[abc", ""), "malformed pattern should not match empty string")
+}
+
 func TestIsExcludedGitignoreStyle(t *testing.T) {
-	type tc struct {
+	tests := []struct {
 		desc     string
 		path     string
 		excludes []string
 		want     bool
-	}
-	tests := []tc{
+	}{
 		{"simple name match", ".git/config", []string{".git"}, true},
 		{"glob match", "logs/app.log", []string{"*.log"}, true},
 		{"negation overrides earlier match", "important.log", []string{"*.log", "!important.log"}, false},
@@ -85,9 +88,7 @@ func TestIsExcludedGitignoreStyle(t *testing.T) {
 					excluded = !neg
 				}
 			}
-			if excluded != tt.want {
-				t.Errorf("path %q excludes %v: got %v, want %v", tt.path, tt.excludes, excluded, tt.want)
-			}
+			assert.Equal(t, tt.want, excluded)
 		})
 	}
 }
@@ -101,41 +102,35 @@ excludes:
   - "*.bak"
   - "dist/"
 `
-	must(t, os.WriteFile(filepath.Join(dir, ".gossh.yml"), []byte(content), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gossh.yml"), []byte(content), 0644))
 
 	orig, err := os.Getwd()
-	must(t, err)
-	must(t, os.Chdir(dir))
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(orig) //nolint:errcheck
 
 	cfg, err := config.Load()
-	must(t, err)
+	require.NoError(t, err)
 
-	if cfg.Server != "user@host.example.com" {
-		t.Errorf("Server = %q, want %q", cfg.Server, "user@host.example.com")
-	}
-	if cfg.RemoteDir != "~/configs" {
-		t.Errorf("RemoteDir = %q, want %q", cfg.RemoteDir, "~/configs")
-	}
-	if len(cfg.Excludes) != 2 || cfg.Excludes[0] != "*.bak" || cfg.Excludes[1] != "dist/" {
-		t.Errorf("Excludes = %v, want [*.bak dist/]", cfg.Excludes)
-	}
+	assert.Equal(t, "user@host.example.com", cfg.Server)
+	assert.Equal(t, "~/configs", cfg.RemoteDir)
+	assert.Equal(t, []string{"*.bak", "dist/"}, cfg.Excludes)
 }
 
 func TestLoadConfigMissing(t *testing.T) {
 	dir := t.TempDir()
 	orig, err := os.Getwd()
-	must(t, err)
-	must(t, os.Chdir(dir))
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
 	defer os.Chdir(orig) //nolint:errcheck
 
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
 
 	cfg, err := config.Load()
-	must(t, err)
+	require.NoError(t, err)
 
-	if cfg.Server != "" || cfg.RemoteDir != "" || len(cfg.Excludes) != 0 {
-		t.Errorf("expected empty config, got %+v", cfg)
-	}
+	assert.Empty(t, cfg.Server)
+	assert.Empty(t, cfg.RemoteDir)
+	assert.Empty(t, cfg.Excludes)
 }

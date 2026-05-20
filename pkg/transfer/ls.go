@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -8,9 +9,17 @@ import (
 	"github.com/noobygames/gossh/pkg/sshconn"
 )
 
+// LSOptions controls display behaviour of the ls command.
+type LSOptions struct {
+	Long      bool
+	All       bool
+	Human     bool
+	Recursive bool
+}
+
 // LS lists files at remotePath on the remote host.
-func LS(opts Options, remotePath string, long, all, human, recursive bool) error {
-	client, err := sshconn.Connect(opts.Server, opts.Identity, sshconn.TerminalPrompt)
+func LS(ctx context.Context, opts Options, remotePath string, lsOpts LSOptions) error {
+	client, err := sshconn.Connect(ctx, opts.Server, opts.Identity, opts.prompt())
 	if err != nil {
 		return err
 	}
@@ -24,25 +33,28 @@ func LS(opts Options, remotePath string, long, all, human, recursive bool) error
 	sess.Stdout = opts.Out
 	sess.Stderr = os.Stderr
 
+	return sess.Run(buildLSCommand(remotePath, lsOpts))
+}
+
+func buildLSCommand(remotePath string, lsOpts LSOptions) string {
 	var sb strings.Builder
 	sb.WriteString("ls")
-	if long || all || human || recursive {
+	if lsOpts.Long || lsOpts.All || lsOpts.Human || lsOpts.Recursive {
 		sb.WriteString(" -")
-		if long {
+		if lsOpts.Long {
 			sb.WriteByte('l')
 		}
-		if all {
+		if lsOpts.All {
 			sb.WriteByte('a')
 		}
-		if human {
+		if lsOpts.Human {
 			sb.WriteByte('h')
 		}
-		if recursive {
+		if lsOpts.Recursive {
 			sb.WriteByte('R')
 		}
 	}
 	sb.WriteByte(' ')
-	sb.WriteString(remotePath)
-
-	return sess.Run(sb.String())
+	sb.WriteString(shellQuote(remotePath))
+	return sb.String()
 }

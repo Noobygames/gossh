@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -10,14 +11,14 @@ import (
 )
 
 // Push uploads opts.SourceDir to opts.RemoteDir on the remote host.
-func Push(opts Options) error {
+func Push(ctx context.Context, opts Options) error {
 	if opts.DryRun {
 		fmt.Fprintf(opts.Out, "Dry run — would sync: %s → %s:%s\n\n", opts.SourceDir, opts.Server, opts.RemoteDir)
 		return ListFiles(opts.Out, opts.SourceDir, opts.Excludes)
 	}
 
 	fmt.Fprintf(opts.Out, "Connecting to %s...\n", opts.Server)
-	client, err := sshconn.Connect(opts.Server, opts.Identity, sshconn.TerminalPrompt)
+	client, err := sshconn.Connect(ctx, opts.Server, opts.Identity, opts.prompt())
 	if err != nil {
 		return err
 	}
@@ -36,7 +37,8 @@ func Push(opts Options) error {
 		return fmt.Errorf("stdin pipe: %w", err)
 	}
 
-	if err := sess.Start(fmt.Sprintf("mkdir -p %s && tar -xzf - -C %s", opts.RemoteDir, opts.RemoteDir)); err != nil {
+	remoteDir := shellQuote(opts.RemoteDir)
+	if err := sess.Start(fmt.Sprintf("mkdir -p %s && tar -xzf - -C %s", remoteDir, remoteDir)); err != nil {
 		return fmt.Errorf("remote start: %w", err)
 	}
 
@@ -52,7 +54,7 @@ func Push(opts Options) error {
 }
 
 // PushFile uploads a single local file to an exact remote path.
-func PushFile(opts Options, localPath, remotePath string) error {
+func PushFile(ctx context.Context, opts Options, localPath, remotePath string) error {
 	f, err := os.Open(localPath)
 	if err != nil {
 		return err
@@ -65,7 +67,7 @@ func PushFile(opts Options, localPath, remotePath string) error {
 	}
 
 	fmt.Fprintf(opts.Out, "Connecting to %s...\n", opts.Server)
-	client, err := sshconn.Connect(opts.Server, opts.Identity, sshconn.TerminalPrompt)
+	client, err := sshconn.Connect(ctx, opts.Server, opts.Identity, opts.prompt())
 	if err != nil {
 		return err
 	}
@@ -83,7 +85,9 @@ func PushFile(opts Options, localPath, remotePath string) error {
 		return fmt.Errorf("stdin pipe: %w", err)
 	}
 
-	if err := sess.Start(fmt.Sprintf("mkdir -p %s && cat > %s", path.Dir(remotePath), remotePath)); err != nil {
+	remoteDir := shellQuote(path.Dir(remotePath))
+	remoteFile := shellQuote(remotePath)
+	if err := sess.Start(fmt.Sprintf("mkdir -p %s && cat > %s", remoteDir, remoteFile)); err != nil {
 		return fmt.Errorf("remote start: %w", err)
 	}
 

@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -25,20 +27,32 @@ func Load() (Config, error) {
 		candidates = append(candidates, filepath.Join(home, ".gossh.yml"))
 	}
 	for _, p := range candidates {
-		data, err := os.ReadFile(p)
-		if os.IsNotExist(err) {
-			continue
-		}
+		cfg, ok, err := tryLoadConfig(p)
 		if err != nil {
-			return Config{}, fmt.Errorf("read config %s: %w", p, err)
+			return Config{}, err
 		}
-		var cfg Config
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			return Config{}, fmt.Errorf("parse config %s: %w", p, err)
+		if ok {
+			return cfg, nil
 		}
-		return cfg, nil
 	}
 	return Config{}, nil
+}
+
+// tryLoadConfig attempts to read and parse a single config file.
+// Returns (cfg, true, nil) on success, (zero, false, nil) if the file does not exist.
+func tryLoadConfig(p string) (Config, bool, error) {
+	data, err := os.ReadFile(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Config{}, false, nil
+	}
+	if err != nil {
+		return Config{}, false, fmt.Errorf("read config %s: %w", p, err)
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return Config{}, false, &ParseError{Path: p, Err: err}
+	}
+	return cfg, true, nil
 }
 
 // MatchPattern reports whether the slash-separated relPath matches a single
@@ -53,7 +67,13 @@ func MatchPattern(relPath, pattern string) bool {
 		return GlobMatch(pattern, relPath)
 	}
 	for comp := range strings.SplitSeq(relPath, "/") {
-		if ok, _ := path.Match(pattern, comp); ok {
+		ok, err := path.Match(pattern, comp)
+		if err != nil {
+			// path.ErrBadPattern: malformed pattern from user config (e.g. "[abc").
+			// The pattern is invalid for every component, so no match is possible.
+			return false
+		}
+		if ok {
 			return true
 		}
 	}
@@ -63,7 +83,11 @@ func MatchPattern(relPath, pattern string) bool {
 // GlobMatch matches pattern against s with support for "**".
 func GlobMatch(pattern, s string) bool {
 	if !strings.Contains(pattern, "**") {
-		ok, _ := path.Match(pattern, s)
+		ok, err := path.Match(pattern, s)
+		if err != nil {
+			// path.ErrBadPattern: malformed pattern; treat as no match.
+			return false
+		}
 		return ok
 	}
 	before, after, _ := strings.Cut(pattern, "**")

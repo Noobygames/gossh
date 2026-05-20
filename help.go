@@ -7,25 +7,25 @@ import (
 )
 
 func cmdHelp(args []string) {
-	if len(args) > 0 {
-		switch args[0] {
-		case "push":
-			helpPush()
-		case "pull":
-			helpPull()
-		case "ls":
-			helpLS()
-		case "kubectl":
-			helpKubectl()
-		case "helm":
-			helpHelm()
-		default:
-			fmt.Fprintf(os.Stderr, "unknown command %q\n\n", args[0])
-			helpAll()
-		}
+	if len(args) == 0 {
+		helpAll()
 		return
 	}
-	helpAll()
+	switch args[0] {
+	case "push":
+		helpPush()
+	case "pull":
+		helpPull()
+	case "ls":
+		helpLS()
+	case "kubectl":
+		helpKubectl()
+	case "helm":
+		helpHelm()
+	default:
+		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", args[0])
+		helpAll()
+	}
 }
 
 func helpAll() {
@@ -81,10 +81,7 @@ Flags:
 `)
 	fs := flag.NewFlagSet("push", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	server, remoteDir, identity := commonFlags(fs)
-	_ = server
-	_ = remoteDir
-	_ = identity
+	commonFlags(fs)
 	fs.Bool("dry-run", false, "List files without transferring")
 	fs.String("exclude", "", "Exclude pattern, gitignore-style (repeatable)")
 	fs.PrintDefaults()
@@ -109,10 +106,7 @@ Flags:
 `)
 	fs := flag.NewFlagSet("pull", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	server, remoteDir, identity := commonFlags(fs)
-	_ = server
-	_ = remoteDir
-	_ = identity
+	commonFlags(fs)
 	fs.PrintDefaults()
 }
 
@@ -170,10 +164,7 @@ Flags:
 `)
 	fs := flag.NewFlagSet("ls", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	server, remoteDir, identity := commonFlags(fs)
-	_ = server
-	_ = remoteDir
-	_ = identity
+	commonFlags(fs)
 	fs.Bool("l", false, "Long listing format")
 	fs.Bool("a", false, "Include hidden entries (starting with .)")
 	fs.Bool("h", false, "Human-readable file sizes (with -l)")
