@@ -46,6 +46,8 @@ func main() {
 		err = cmdTool(ctx, "kubectl", os.Args[2:])
 	case "helm":
 		err = cmdTool(ctx, "helm", os.Args[2:])
+	case "completion":
+		cmdCompletion(os.Args[2:])
 	case "version", "--version", "-version":
 		cmdVersion()
 	case "help", "-h", "--help", "-help":

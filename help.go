@@ -22,6 +22,8 @@ func cmdHelp(args []string) {
 		helpKubectl()
 	case "helm":
 		helpHelm()
+	case "completion":
+		helpCompletion()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", args[0])
 		helpAll()
@@ -38,10 +40,11 @@ Commands:
   push    Upload a local file or directory to the remote host
   pull    Download a remote file or directory to the local machine
   ls      List files on the remote host
-  kubectl Run kubectl on the remote host; local file args are auto-uploaded
-  helm    Run helm on the remote host; local file args are auto-uploaded
-  version Show version information
-  help    Show help for a command
+  kubectl    Run kubectl on the remote host; local file args are auto-uploaded
+  helm       Run helm on the remote host; local file args are auto-uploaded
+  completion Generate shell completion script
+  version    Show version information
+  help       Show help for a command
 
 Examples:
   gossh push    -server deploy@host.example.com
@@ -147,6 +150,27 @@ Examples:
   gossh helm install myrelease ./my-chart/ -f ./values.yaml
   gossh helm upgrade myrelease ./my-chart/ --install
   gossh helm -server deploy@host.example.com list
+
+`)
+}
+
+func helpCompletion() {
+	fmt.Fprint(os.Stderr, `Usage:
+  gossh completion <shell>
+
+  Outputs a shell completion script. Source it once or add it to your
+  shell profile so tab-completion works for gossh commands and flags.
+
+Supported shells:
+  powershell   Windows PowerShell / pwsh
+  bash         Bash
+
+Setup:
+  PowerShell — add to $PROFILE:
+    gossh completion powershell | Out-String | Invoke-Expression
+
+  Bash — add to ~/.bashrc:
+    source <(gossh completion bash)
 
 `)
 }
