@@ -135,13 +135,18 @@ func keyAuth(path string, prompt PassphrasePrompt) (ssh.AuthMethod, error) {
 	if !errors.As(err, &passErr) {
 		return nil, fmt.Errorf("parse key %s: %w", path, err)
 	}
-	passphrase, err := prompt(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading passphrase: %w", err)
-	}
-	signer, err = ssh.ParsePrivateKeyWithPassphrase(data, passphrase)
-	if err != nil {
-		return nil, fmt.Errorf("wrong passphrase for %s: %w", path, err)
-	}
-	return ssh.PublicKeys(signer), nil
+	// Key is encrypted: return a lazy auth method so the passphrase prompt
+	// only appears if the SSH library actually needs to sign with this key
+	// (i.e. when no agent is available or the agent failed).
+	return ssh.PublicKeysCallback(func() ([]ssh.Signer, error) {
+		passphrase, err := prompt(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading passphrase: %w", err)
+		}
+		signer, err := ssh.ParsePrivateKeyWithPassphrase(data, passphrase)
+		if err != nil {
+			return nil, fmt.Errorf("wrong passphrase for %s: %w", path, err)
+		}
+		return []ssh.Signer{signer}, nil
+	}), nil
 }
