@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
 )
@@ -29,12 +30,20 @@ func TerminalPrompt(keyPath string) ([]byte, error) {
 
 // Connect dials server (user@host[:port]) using key authentication.
 // identity specifies a key path; if empty, standard ~/.ssh locations are tried.
+// An SSH agent (ssh-agent / Windows OpenSSH Agent) is tried first so no passphrase prompt is needed.
 func Connect(ctx context.Context, server, identity string, prompt PassphrasePrompt) (*ssh.Client, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("user home dir: %w", err)
 	}
-	auth, err := loadAuth(identity, home, prompt)
+
+	var agentMethod ssh.AuthMethod
+	if rwc := dialAgent(); rwc != nil {
+		defer rwc.Close()
+		agentMethod = ssh.PublicKeysCallback(agent.NewClient(rwc).Signers)
+	}
+
+	auth, err := loadAuth(identity, home, prompt, agentMethod)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +92,11 @@ func ParseTarget(server string) (user, host string, err error) {
 	return user, host, nil
 }
 
-func loadAuth(identity, home string, prompt PassphrasePrompt) ([]ssh.AuthMethod, error) {
+func loadAuth(identity, home string, prompt PassphrasePrompt, agentMethod ssh.AuthMethod) ([]ssh.AuthMethod, error) {
+	var methods []ssh.AuthMethod
+	if agentMethod != nil {
+		methods = append(methods, agentMethod)
+	}
 	if identity != "" {
 		m, err := keyAuth(identity, prompt)
 		if err != nil {
@@ -92,9 +105,8 @@ func loadAuth(identity, home string, prompt PassphrasePrompt) ([]ssh.AuthMethod,
 		if m == nil {
 			return nil, &IdentityNotFoundError{Path: identity}
 		}
-		return []ssh.AuthMethod{m}, nil
+		return append(methods, m), nil
 	}
-	var methods []ssh.AuthMethod
 	for _, name := range []string{"id_ed25519", "id_rsa", "id_ecdsa"} {
 		m, err := keyAuth(filepath.Join(home, ".ssh", name), prompt)
 		if err != nil {
