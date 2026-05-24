@@ -103,6 +103,68 @@ func TestSubstituteArg(t *testing.T) {
 	}
 }
 
+// --- isLocalPath ---
+
+func TestIsLocalPath(t *testing.T) {
+	dir := t.TempDir()
+	existingFile := filepath.Join(dir, "deploy.yaml")
+	require.NoError(t, os.WriteFile(existingFile, []byte("x"), 0644))
+	existingDir := filepath.Join(dir, "myapp")
+	require.NoError(t, os.Mkdir(existingDir, 0755))
+
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"absolute file", existingFile, true},
+		{"absolute dir", existingDir, true},
+		{"dot-slash prefix", "./deploy.yaml", false}, // doesn't exist at cwd, but has prefix
+		{"bare name matching existing dir", filepath.Base(existingDir), false},
+		{"bare name (pod name etc.)", "raid-assignments", false},
+		{"http url", "https://example.com/chart", false},
+		{"empty", "", false},
+		{"missing absolute path", "/no/such/file", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isLocalPath(tt.input))
+		})
+	}
+}
+
+// --- collectLocalUploads ---
+
+func TestCollectLocalUploads_BareNameNotUploaded(t *testing.T) {
+	// Simulate: gossh kubectl describe pod raid-assignments -n raid-assignments
+	// A local directory named "raid-assignments" exists — must NOT be uploaded.
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "raid-assignments"), 0755))
+
+	orig, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	defer os.Chdir(orig) //nolint:errcheck
+
+	uploads, err := collectLocalUploads(
+		[]string{"describe", "pod", "raid-assignments", "-n", "raid-assignments"},
+		"/tmp/gossh-test",
+	)
+	require.NoError(t, err)
+	assert.Empty(t, uploads, "bare names must not be treated as local paths")
+}
+
+func TestCollectLocalUploads_ExplicitPathUploaded(t *testing.T) {
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "manifest.yaml")
+	require.NoError(t, os.WriteFile(manifest, []byte("x"), 0644))
+
+	uploads, err := collectLocalUploads([]string{"apply", "-f", manifest}, "/tmp/gossh-test")
+	require.NoError(t, err)
+	require.Len(t, uploads, 1)
+	assert.Equal(t, manifest, uploads[0].localPath)
+}
+
 // --- buildUpload ---
 
 func TestBuildUpload_NotLocalPath(t *testing.T) {

@@ -26,7 +26,7 @@ func cmdPull(ctx context.Context, args []string) error {
 func runPull(ctx context.Context, server, remoteDir, identity string, positional []string, cfg config.Config, out io.Writer) error {
 	opts := transfer.Options{
 		Server:    config.FirstNonEmpty(server, cfg.Server),
-		RemoteDir: config.FirstNonEmpty(remoteDir, cfg.RemoteDir, "~/kubernetes"),
+		RemoteDir: normalizeRemotePath(config.FirstNonEmpty(remoteDir, cfg.RemoteDir, "~/kubernetes")),
 		Identity:  config.FirstNonEmpty(identity),
 		Out:       out,
 	}
@@ -39,7 +39,7 @@ func runPull(ctx context.Context, server, remoteDir, identity string, positional
 		}
 		return transfer.Pull(ctx, opts, transfer.TerminalConflictPrompt)
 	case 2:
-		return transfer.PullFile(ctx, opts, positional[0], positional[1], transfer.TerminalConflictPrompt)
+		return transfer.PullFile(ctx, opts, normalizeRemotePath(positional[0]), positional[1], transfer.TerminalConflictPrompt)
 	default:
 		return fmt.Errorf("too many arguments — run 'gossh help pull'")
 	}

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 )
 
@@ -57,6 +58,24 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// normalizeRemotePath converts a remote path that the local shell may have
+// expanded (e.g. PowerShell turns ~/foo into C:\Users\name/foo) back into a
+// portable form: backslashes become forward slashes, and the local home-dir
+// prefix is replaced with ~ so the remote shell can resolve it correctly.
+func normalizeRemotePath(p string) string {
+	p = filepath.ToSlash(p)
+	if home, err := os.UserHomeDir(); err == nil {
+		homeSlash := filepath.ToSlash(home)
+		if p == homeSlash {
+			return "~"
+		}
+		if strings.HasPrefix(p, homeSlash+"/") {
+			return "~/" + p[len(homeSlash)+1:]
+		}
+	}
+	return p
 }
 
 func commonFlags(fs *flag.FlagSet) (server, remoteDir, identity *string) {

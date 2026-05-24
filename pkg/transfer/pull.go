@@ -114,7 +114,7 @@ func Pull(ctx context.Context, opts Options, prompt ConflictPromptFn) error {
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
 
-	if err := sess.Start(fmt.Sprintf("tar -czf - -C %s .", shellQuote(opts.RemoteDir))); err != nil {
+	if err := sess.Start(fmt.Sprintf("tar -czf - -C %s .", remoteQuote(opts.RemoteDir))); err != nil {
 		return fmt.Errorf("remote start: %w", err)
 	}
 
@@ -243,7 +243,7 @@ func PullFile(ctx context.Context, opts Options, remotePath, localPath string, p
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
 
-	if err := sess.Start(fmt.Sprintf("cat %s", shellQuote(remotePath))); err != nil {
+	if err := sess.Start(fmt.Sprintf("cat %s", remoteQuote(remotePath))); err != nil {
 		return fmt.Errorf("remote start: %w", err)
 	}
 

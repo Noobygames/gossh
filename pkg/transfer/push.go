@@ -37,7 +37,7 @@ func Push(ctx context.Context, opts Options) error {
 		return fmt.Errorf("stdin pipe: %w", err)
 	}
 
-	remoteDir := shellQuote(opts.RemoteDir)
+	remoteDir := remoteQuote(opts.RemoteDir)
 	if err := sess.Start(fmt.Sprintf("mkdir -p %s && tar -xzf - -C %s", remoteDir, remoteDir)); err != nil {
 		return fmt.Errorf("remote start: %w", err)
 	}
@@ -85,8 +85,8 @@ func PushFile(ctx context.Context, opts Options, localPath, remotePath string) e
 		return fmt.Errorf("stdin pipe: %w", err)
 	}
 
-	remoteDir := shellQuote(path.Dir(remotePath))
-	remoteFile := shellQuote(remotePath)
+	remoteDir := remoteQuote(path.Dir(remotePath))
+	remoteFile := remoteQuote(remotePath)
 	if err := sess.Start(fmt.Sprintf("mkdir -p %s && cat > %s", remoteDir, remoteFile)); err != nil {
 		return fmt.Errorf("remote start: %w", err)
 	}

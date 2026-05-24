@@ -55,6 +55,6 @@ func buildLSCommand(remotePath string, lsOpts LSOptions) string {
 		}
 	}
 	sb.WriteByte(' ')
-	sb.WriteString(shellQuote(remotePath))
+	sb.WriteString(remoteQuote(remotePath))
 	return sb.String()
 }

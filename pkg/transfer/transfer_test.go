@@ -290,6 +290,30 @@ func TestApplyPattern(t *testing.T) {
 	}
 }
 
+// --- remoteQuote ---
+
+func TestRemoteQuote(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain path", "/tmp/foo", "'/tmp/foo'"},
+		{"path with spaces", "/my dir/foo", "'/my dir/foo'"},
+		{"path with single quote", "/tmp/it's", "'/tmp/it'\\''s'"},
+		{"tilde alone", "~", `"$HOME"`},
+		{"tilde slash prefix", "~/kubernetes", `"$HOME/"'kubernetes'`},
+		{"tilde slash nested", "~/kubernetes/foo/bar.yml", `"$HOME/"'kubernetes/foo/bar.yml'`},
+		{"tilde slash with spaces", "~/my dir/foo", `"$HOME/"'my dir/foo'`},
+		{"tilde slash with single quote", "~/it's", `"$HOME/"'it'\''s'`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, remoteQuote(tt.input))
+		})
+	}
+}
+
 // --- buildLSCommand ---
 
 func TestBuildLSCommand(t *testing.T) {
@@ -304,6 +328,7 @@ func TestBuildLSCommand(t *testing.T) {
 		{"all flags", "/tmp", LSOptions{Long: true, All: true, Human: true, Recursive: true}, "ls -lahR '/tmp'"},
 		{"path with spaces", "/my dir", LSOptions{}, "ls '/my dir'"},
 		{"path with single quote", "/tmp/it's", LSOptions{}, "ls '/tmp/it'\\''s'"},
+		{"tilde path", "~/logs", LSOptions{}, `ls "$HOME/"'logs'`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

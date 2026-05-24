@@ -30,7 +30,7 @@ func cmdPush(ctx context.Context, args []string) error {
 func runPush(ctx context.Context, server, remoteDir, identity string, dryRun bool, extraExcludes, positional []string, cfg config.Config, out io.Writer) error {
 	opts := transfer.Options{
 		Server:    config.FirstNonEmpty(server, cfg.Server),
-		RemoteDir: config.FirstNonEmpty(remoteDir, cfg.RemoteDir, "~/kubernetes"),
+		RemoteDir: normalizeRemotePath(config.FirstNonEmpty(remoteDir, cfg.RemoteDir, "~/kubernetes")),
 		DryRun:    dryRun,
 		Identity:  config.FirstNonEmpty(identity),
 		Excludes:  slices.Concat(defaultExcludes, cfg.Excludes, extraExcludes),
@@ -52,10 +52,10 @@ func runPush(ctx context.Context, server, remoteDir, identity string, dryRun boo
 		}
 		if info.IsDir() {
 			opts.SourceDir = localPath
-			opts.RemoteDir = remotePath
+			opts.RemoteDir = normalizeRemotePath(remotePath)
 			return transfer.Push(ctx, opts)
 		}
-		return transfer.PushFile(ctx, opts, localPath, remotePath)
+		return transfer.PushFile(ctx, opts, localPath, normalizeRemotePath(remotePath))
 	default:
 		return fmt.Errorf("too many arguments — run 'gossh help push'")
 	}

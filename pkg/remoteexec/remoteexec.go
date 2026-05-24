@@ -154,6 +154,13 @@ func isLocalPath(s string) bool {
 	if s == "" || strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
 		return false
 	}
+	// Only treat as a local path when the argument is unambiguously a path:
+	// must start with ./, ../, or be absolute. Bare names like "raid-assignments"
+	// are tool arguments (pod names, release names, …) even if a same-named local
+	// entry happens to exist.
+	if !strings.HasPrefix(s, "./") && !strings.HasPrefix(s, "../") && !filepath.IsAbs(s) {
+		return false
+	}
 	_, err := os.Stat(s)
 	return err == nil
 }

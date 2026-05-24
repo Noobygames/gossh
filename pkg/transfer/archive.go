@@ -146,3 +146,16 @@ func applyPattern(excluded bool, relPath, pattern string) bool {
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
+
+// remoteQuote quotes s for a remote shell command, expanding a leading "~"
+// via $HOME so the remote shell resolves the home directory correctly.
+// Single-quoting alone prevents tilde expansion.
+func remoteQuote(s string) string {
+	if s == "~" {
+		return `"$HOME"`
+	}
+	if rest, ok := strings.CutPrefix(s, "~/"); ok {
+		return `"$HOME/"` + shellQuote(rest)
+	}
+	return shellQuote(s)
+}
